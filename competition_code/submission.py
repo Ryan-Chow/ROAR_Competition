@@ -80,24 +80,68 @@ class RoarCompetitionSolution:
             self.current_waypoint_idx,
             self.maneuverable_waypoints
         )
-         # We use the 3rd waypoint ahead of the current waypoint as the target waypoint
-        waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + 3) % len(self.maneuverable_waypoints)]
+        # Dynamic waypoint viewer, depends on speed.
+        lookahead_distance = np.floor(0.425 * vehicle_velocity_norm)
+        waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(lookahead_distance)) % len(self.maneuverable_waypoints)]
+
+        # Dynamic waypoint viewer (same as one above), BUT looks further ahead, providing more advanced warning (so the car doesn't slam into a wall)
+        further_lookahead_distance = np.floor(0.90 * vehicle_velocity_norm)
+        further_waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(further_lookahead_distance)) % len(self.maneuverable_waypoints)]
+
+        # Dynamic waypoint viewer (same as one above), BUT looks EVEN further ahead, providing EVEN more advanced warning (so the car doesn't slam into a wall)
+        superfar_lookahead_distance = np.floor(1.25 * vehicle_velocity_norm) #1.265
+        superfar_waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(superfar_lookahead_distance)) % len(self.maneuverable_waypoints)]
+
+        
+        # waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + 3) % len(self.maneuverable_waypoints)]
 
         # Calculate delta vector towards the target waypoint
         vector_to_waypoint = (waypoint_to_follow.location - vehicle_location)[:2]
         heading_to_waypoint = np.arctan2(vector_to_waypoint[1],vector_to_waypoint[0])
 
+        # Calculate delta vector towards "advanced warning" target waypoint
+        vector_to_further_waypoint = (further_waypoint_to_follow.location - vehicle_location)[:2]
+        heading_to_further_waypoint = np.arctan2(vector_to_further_waypoint[1],vector_to_further_waypoint[0])
+
+        # Calculate delta vector towards "advanced warning" target waypoint
+        vector_to_superfar_waypoint = (superfar_waypoint_to_follow.location - vehicle_location)[:2]
+        heading_to_superfar_waypoint = np.arctan2(vector_to_superfar_waypoint[1],vector_to_superfar_waypoint[0])
+
         # Calculate delta angle towards the target waypoint
         delta_heading = normalize_rad(heading_to_waypoint - vehicle_rotation[2])
 
+        # Calculate the curavture of the upcoming track
+        turning_radius = 1.0 / np.cross([vector_to_further_waypoint[0], vector_to_further_waypoint[1], 0], [np.cos(vehicle_rotation[2]), np.sin(vehicle_rotation[2]), 0])[2] if np.linalg.norm(vector_to_further_waypoint) > 0 else 0.0
+        self.turning_radius = turning_radius # For testing
+        curvature = 1.0 / turning_radius if turning_radius != 0 else 0.0
+        self.curvature = curvature # For testing
+
+        # Calculate the curavture of the track that is decently ahead of the vehicle
+        superfar_turning_radius = 1.0 / np.cross([vector_to_superfar_waypoint[0], vector_to_superfar_waypoint[1], 0], [np.cos(vehicle_rotation[2]), np.sin(vehicle_rotation[2]), 0])[2] if np.linalg.norm(vector_to_further_waypoint) > 0 else 0.0
+        superfar_curvature = 1.0 / superfar_turning_radius if superfar_turning_radius != 0 else 0.0
+
         # Proportional controller to steer the vehicle towards the target waypoint
         steer_control = (
-            -8.0 / np.sqrt(vehicle_velocity_norm) * delta_heading / np.pi
+            -18.0 / np.sqrt(vehicle_velocity_norm) * delta_heading / np.pi
         ) if vehicle_velocity_norm > 1e-2 else -np.sign(delta_heading)
         steer_control = np.clip(steer_control, -1.0, 1.0)
 
         # Proportional controller to control the vehicle's speed towards 40 m/s
-        throttle_control = 0.05 * (20 - vehicle_velocity_norm)
+
+        # Define a proportional controller for speed adjustment based on curvature
+
+        if (self.current_waypoint_idx % 2773 > 2600 and self.current_waypoint_idx % 2773 < 2725) or (self.current_waypoint_idx % 2773 > 1300 and self.current_waypoint_idx % 2773 < 1340): # Catching sharper curves that need more cautious control.
+            if np.abs(superfar_curvature) > 20.0: # Big turn far ahead, slow down!
+                throttle_control = -0.15
+            else: # If the superfar curve detector doesn't detect a very big curve ahead...
+                throttle_control = 1
+        elif (self.current_waypoint_idx % 2773 > 390) or (self.current_waypoint_idx % 2784 < 450): # Catching sharp-ish curves that need more cautious control.
+            if np.abs(superfar_curvature) > 20.0: # Big turn far ahead, slow down!
+                throttle_control = 0.32
+            else: # If the superfar curve detector doesn't detect a very big curve ahead...
+                throttle_control = 1
+        else:
+            throttle_control = 1
 
         control = {
             "throttle": np.clip(throttle_control, 0.0, 1.0),
@@ -107,5 +151,6 @@ class RoarCompetitionSolution:
             "reverse": 0,
             "target_gear": 0
         }
+
         await self.vehicle.apply_action(control)
         return control
