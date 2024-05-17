@@ -81,8 +81,20 @@ class RoarCompetitionSolution:
             self.maneuverable_waypoints
         )
         # Dynamic waypoint viewer, depends on speed.
-        lookahead_distance = np.floor(0.425 * vehicle_velocity_norm)
+        lookahead_distance = np.floor(0.44 * vehicle_velocity_norm)
         waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(lookahead_distance)) % len(self.maneuverable_waypoints)]
+
+        #dynamic waypoint viewer, depends on speed. looks a little ahead
+        mid_lookahead_distance = np.floor(0.48 * vehicle_velocity_norm)
+        mid_waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(mid_lookahead_distance)) % len(self.maneuverable_waypoints)]
+
+        #dynamic waypoint viewer, depends on speed. looks a little more ahead
+        midfar_lookahead_distance = np.floor(0.56 * vehicle_velocity_norm)
+        midfar_waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(midfar_lookahead_distance)) % len(self.maneuverable_waypoints)]
+
+        #dynamic waypoint viewer, depends on speed. looks a little more ahead
+        midfarplus_lookahead_distance = np.floor(0.68* vehicle_velocity_norm)
+        midfarplus_waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(midfarplus_lookahead_distance)) % len(self.maneuverable_waypoints)]
 
         # Dynamic waypoint viewer (same as one above), BUT looks further ahead, providing more advanced warning (so the car doesn't slam into a wall)
         further_lookahead_distance = np.floor(0.90 * vehicle_velocity_norm)
@@ -92,11 +104,24 @@ class RoarCompetitionSolution:
         superfar_lookahead_distance = np.floor(1.25 * vehicle_velocity_norm) #1.265
         superfar_waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + int(superfar_lookahead_distance)) % len(self.maneuverable_waypoints)]
 
-        
         # waypoint_to_follow = self.maneuverable_waypoints[(self.current_waypoint_idx + 3) % len(self.maneuverable_waypoints)]
 
-        # Calculate delta vector towards the target waypoint
-        vector_to_waypoint = (waypoint_to_follow.location - vehicle_location)[:2]
+        # Calculate delta vector towards the target waypoint (for steering)
+        if (self.current_waypoint_idx % 2775 > 2500 and self.current_waypoint_idx % 2775 < 2775): # Catching sharper curves that need more cautious control.
+            vector_to_waypoint = (waypoint_to_follow.location - vehicle_location)[:2]
+        elif (self.current_waypoint_idx % 2775 > 1375 and self.current_waypoint_idx % 2775 < 1400):
+            vector_to_waypoint = (midfarplus_waypoint_to_follow.location - vehicle_location)[:2]
+        elif (self.current_waypoint_idx % 2775 > 1700 and self.current_waypoint_idx % 2775 < 2200):
+            vector_to_waypoint = (midfar_waypoint_to_follow.location - vehicle_location)[:2]
+        elif (self.current_waypoint_idx % 2773 > 1400 and self.current_waypoint_idx % 2773 < 1450):
+            vector_to_waypoint = (waypoint_to_follow.location - vehicle_location)[:2]
+        elif self.current_waypoint_idx % 2773 > 350 and self.current_waypoint_idx % 2773 < 600:
+            vector_to_waypoint = (waypoint_to_follow.location - vehicle_location)[:2]
+        elif self.current_waypoint_idx % 2775 > 0 and self.current_waypoint_idx % 2775 < 339:
+            vector_to_waypoint = (midfarplus_waypoint_to_follow.location - vehicle_location)[:2]
+        else:
+            vector_to_waypoint = (mid_waypoint_to_follow.location - vehicle_location)[:2]
+        
         heading_to_waypoint = np.arctan2(vector_to_waypoint[1],vector_to_waypoint[0])
 
         # Calculate delta vector towards "advanced warning" target waypoint
@@ -110,12 +135,6 @@ class RoarCompetitionSolution:
         # Calculate delta angle towards the target waypoint
         delta_heading = normalize_rad(heading_to_waypoint - vehicle_rotation[2])
 
-        # Calculate the curavture of the upcoming track
-        turning_radius = 1.0 / np.cross([vector_to_further_waypoint[0], vector_to_further_waypoint[1], 0], [np.cos(vehicle_rotation[2]), np.sin(vehicle_rotation[2]), 0])[2] if np.linalg.norm(vector_to_further_waypoint) > 0 else 0.0
-        self.turning_radius = turning_radius # For testing
-        curvature = 1.0 / turning_radius if turning_radius != 0 else 0.0
-        self.curvature = curvature # For testing
-
         # Calculate the curavture of the track that is decently ahead of the vehicle
         superfar_turning_radius = 1.0 / np.cross([vector_to_superfar_waypoint[0], vector_to_superfar_waypoint[1], 0], [np.cos(vehicle_rotation[2]), np.sin(vehicle_rotation[2]), 0])[2] if np.linalg.norm(vector_to_further_waypoint) > 0 else 0.0
         superfar_curvature = 1.0 / superfar_turning_radius if superfar_turning_radius != 0 else 0.0
@@ -126,22 +145,7 @@ class RoarCompetitionSolution:
         ) if vehicle_velocity_norm > 1e-2 else -np.sign(delta_heading)
         steer_control = np.clip(steer_control, -1.0, 1.0)
 
-        # Proportional controller to control the vehicle's speed towards 40 m/s
-
-        # Define a proportional controller for speed adjustment based on curvature
-
-        if (self.current_waypoint_idx % 2773 > 2600 and self.current_waypoint_idx % 2773 < 2725) or (self.current_waypoint_idx % 2773 > 1300 and self.current_waypoint_idx % 2773 < 1340): # Catching sharper curves that need more cautious control.
-            if np.abs(superfar_curvature) > 20.0: # Big turn far ahead, slow down!
-                throttle_control = -0.15
-            else: # If the superfar curve detector doesn't detect a very big curve ahead...
-                throttle_control = 1
-        elif (self.current_waypoint_idx % 2773 > 390) or (self.current_waypoint_idx % 2784 < 450): # Catching sharp-ish curves that need more cautious control.
-            if np.abs(superfar_curvature) > 20.0: # Big turn far ahead, slow down!
-                throttle_control = 0.32
-            else: # If the superfar curve detector doesn't detect a very big curve ahead...
-                throttle_control = 1
-        else:
-            throttle_control = 1
+        throttle_control = self.calculate_speed_control(superfar_curvature)
 
         control = {
             "throttle": np.clip(throttle_control, 0.0, 1.0),
@@ -154,3 +158,37 @@ class RoarCompetitionSolution:
 
         await self.vehicle.apply_action(control)
         return control
+    
+    def calculate_speed_control(self, superfar_curvature):
+        default = 1
+
+        if (self.current_waypoint_idx % 2775 > 2450 and self.current_waypoint_idx % 2775 < 2740) or (self.current_waypoint_idx % 2773 > 1300 and self.current_waypoint_idx % 2773 < 1375): # Catching sharper curves that need more cautious control.
+            if np.abs(superfar_curvature) > 20.0: # Big turn far ahead, slow down!
+                return -0.185
+            else: # If the superfar curve detector doesn't detect a very big curve ahead...
+                return default
+        elif (self.current_waypoint_idx % 2775 > 400) and (self.current_waypoint_idx % 2775 < 600):
+            if np.abs(superfar_curvature) > 20: # Big turn far ahead, slow down!
+                return 0.25
+            else: # If the superfar curve detector doesn't detect a very big curve ahead...
+                return default
+        elif (self.current_waypoint_idx % 2773 > 1850) and (self.current_waypoint_idx % 2773 < 1950):
+            if np.abs(superfar_curvature) > 20: #TODO
+                return 0.60 #TODO
+            
+            return default
+        elif (self.current_waypoint_idx % 2775 > 775) and (self.current_waypoint_idx % 2775 < 870):
+            if np.abs(superfar_curvature) > 20: #TODO
+                return 0.65 #TODO
+            
+            return default
+        elif (self.current_waypoint_idx % 2775 > 600) and (self.current_waypoint_idx % 2775 < 700):
+            if np.abs(superfar_curvature) > 20:
+                return 0.95
+            
+            return default
+        else:
+            # if np.abs(superfar_curvature) > 25: #TODO
+            #     return 0.95 #TODO
+    
+            return default
