@@ -141,7 +141,7 @@ class RoarCompetitionSolution:
 
         # Proportional controller to steer the vehicle towards the target waypoint
         steer_control = (
-            -18.0 / np.sqrt(vehicle_velocity_norm) * delta_heading / np.pi
+            -18.75 / np.sqrt(vehicle_velocity_norm) * delta_heading / np.pi
         ) if vehicle_velocity_norm > 1e-2 else -np.sign(delta_heading)
         steer_control = np.clip(steer_control, -1.0, 1.0)
 
@@ -162,30 +162,27 @@ class RoarCompetitionSolution:
     def calculate_speed_control(self, superfar_curvature):
         default = 1
 
-        if (self.current_waypoint_idx % 2775 > 2450 and self.current_waypoint_idx % 2775 < 2740) or (self.current_waypoint_idx % 2773 > 1300 and self.current_waypoint_idx % 2773 < 1375): # Catching sharper curves that need more cautious control.
-            if np.abs(superfar_curvature) > 20.0: # Big turn far ahead, slow down!
-                return -0.185
-            else: # If the superfar curve detector doesn't detect a very big curve ahead...
-                return default
-        elif (self.current_waypoint_idx % 2775 > 400) and (self.current_waypoint_idx % 2775 < 600):
+        if (self.current_waypoint_idx % 2775 > 2450 and self.current_waypoint_idx % 2775 < 2715) or (self.current_waypoint_idx % 2773 > 1300 and self.current_waypoint_idx % 2773 < 1375): # Catching sharper curves that need more cautious control.
             if np.abs(superfar_curvature) > 20: # Big turn far ahead, slow down!
-                return 0.25
+                return -0.18
             else: # If the superfar curve detector doesn't detect a very big curve ahead...
                 return default
-        elif (self.current_waypoint_idx % 2773 > 1850) and (self.current_waypoint_idx % 2773 < 1950):
+        elif (self.current_waypoint_idx % 2775 > 400) and (self.current_waypoint_idx % 2775 < 550):
+            if np.abs(superfar_curvature) > 20: # Big turn far ahead, slow down!
+                return 0.225
+            else: # If the superfar curve detector doesn't detect a very big curve ahead...
+                return default
+        elif (self.current_waypoint_idx % 2775 > 1850) and (self.current_waypoint_idx % 2775 < 1950):
             if np.abs(superfar_curvature) > 20: #TODO
                 return 0.60 #TODO
-            
             return default
-        elif (self.current_waypoint_idx % 2775 > 775) and (self.current_waypoint_idx % 2775 < 870):
+        elif (self.current_waypoint_idx % 2775 > 775) and (self.current_waypoint_idx % 2775 < 875):
             if np.abs(superfar_curvature) > 20: #TODO
-                return 0.65 #TODO
-            
+                return 0.70 #TODO
             return default
-        elif (self.current_waypoint_idx % 2775 > 600) and (self.current_waypoint_idx % 2775 < 700):
-            if np.abs(superfar_curvature) > 20:
+        elif (self.current_waypoint_idx % 2775 > 640) and (self.current_waypoint_idx % 2775 < 680):
+            if np.abs(superfar_curvature) > 18:
                 return 0.95
-            
             return default
         else:
             # if np.abs(superfar_curvature) > 25: #TODO
