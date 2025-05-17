@@ -418,7 +418,7 @@ class ThrottleController:
             float: The maximum speed the car can go around the corner at
         """
 
-        mu = 2.75
+        mu = 2.7
 
         if radius >= self.max_radius:
             return self.max_speed
