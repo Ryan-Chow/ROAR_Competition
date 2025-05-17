@@ -38,6 +38,7 @@ class RoarCompetitionRule:
         print(f"total length: {len(self.waypoints)}")
         self._respawn_location = self._last_vehicle_location.copy()
         self._respawn_rpy = self.vehicle.get_roll_pitch_yaw().copy()
+        self.start_time = self.world.last_tick_elapsed_seconds
         # print(self.waypoints[1200:1210])
 
 
@@ -77,7 +78,11 @@ class RoarCompetitionRule:
         
         self.furthest_waypoints_index += min_index #= new_furthest_index
         self._last_vehicle_location = current_location
-        print(f"reach waypoints {self.furthest_waypoints_index} at {self.waypoints[self.furthest_waypoints_index].location}")
+        elapsed_time = self.world.last_tick_elapsed_seconds - self.world.start_time
+        velocity = np.linalg.norm(self.vehicle.get_linear_3d_velocity())
+        speed_kmh = velocity * 3.6
+        control = self.vehicle.get_control()
+        print(f"[{elapsed_time:.2f}s] WP {self.furthest_waypoints_index} @ {self.waypoints[self.furthest_waypoints_index].location} | {speed_kmh:.1f} km/h | T:{control.throttle:.2f} B:{control.brake:.2f} S:{control.steer:.2f}")
 
     
     async def respawn(
@@ -130,6 +135,7 @@ async def evaluate_solution(
     camera = vehicle.attach_camera_sensor(
         roar_py_interface.RoarPyCameraSensorDataRGB,
         np.array([-2.0 * vehicle.bounding_box.extent[0], 0.0, 3.0 * vehicle.bounding_box.extent[2]]), # relative position
+        # np.array([-12.0 * vehicle.bounding_box.extent[0], 0.0, 18.0 * vehicle.bounding_box.extent[2]]), # relative position
         np.array([0, 10/180.0*np.pi, 0]), # relative rotation
         image_width=1024,
         image_height=768

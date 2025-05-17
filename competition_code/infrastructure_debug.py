@@ -1,4 +1,5 @@
 from roar_py_interface import RoarPyActor, RoarPySensor
+import math
 import typing
 import gymnasium as gym
 import roar_py_interface
@@ -20,6 +21,7 @@ class ManualControlViewer:
             "hand_brake": np.array([0]),
             "reverse": np.array([0])
         }
+        self._font_mono = None
     
     def init_pygame(self, x, y) -> None:
         pygame.init()
@@ -27,11 +29,20 @@ class ManualControlViewer:
         pygame.display.set_caption("RoarPy Manual Control Viewer")
         pygame.key.set_repeat()
         self.clock = pygame.time.Clock()
+        self.init_font()
+
+    def init_font(self):
+        font_name = "courier"
+        fonts = [x for x in pygame.font.get_fonts() if font_name in x]
+        default_font = "ubuntumono"
+        mono = default_font if default_font in fonts else fonts[0]
+        mono = pygame.font.match_font(mono)
+        self._font_mono = pygame.font.Font(mono, 14)
 
     def close(self) -> None:
         pygame.quit()
 
-    def render(self, image : roar_py_interface.RoarPyCameraSensorData, occupancy_map : Optional[Image] = None) -> Optional[Dict[str, Any]]:
+    def render(self, image : roar_py_interface.RoarPyCameraSensorData, occupancy_map : Optional[Image] = None, vehicle = None) -> Optional[Dict[str, Any]]:
         image_pil : Image = image.get_image()
         occupancy_map_rgb = occupancy_map.convert("RGB") if occupancy_map is not None else None
         if self.screen is None:
@@ -72,10 +83,41 @@ class ManualControlViewer:
         if occupancy_map_rgb is not None:
             self.screen.blit(occupancy_map_surface, (image_pil.width, 0))
 
+        if vehicle is not None:
+            info = self.get_info(vehicle)
+            self.show_info(info)
+            # info_surface = pygame.Surface((320, 100))
+            # info_surface.set_alpha(100)
+            # self.screen.blit(info_surface, (0, 0))
+            # v_offset = 4
+            # msg = "Location: " + str(vehicle.get_3d_location())
+            # surface = self._font_mono.render(msg, True, (255, 255, 255))
+            # self.screen.blit(surface, (8, v_offset))
+            # v_offset += 18
+
         pygame.display.flip()
         self.clock.tick(60)
         self.last_control = new_control
         return new_control
+    
+    def get_info(self, vehicle):
+        location = vehicle.get_3d_location()
+        v = vehicle.get_linear_3d_velocity()
+        return [
+            "Location:% 20s" % ("(% 5.1f, % 5.1f)" % (location[0], location[1])),
+            "Speed:   % 15.2f km/h" % (3.6 * math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)),
+        ]
+
+    def show_info(self, string_list):
+        info_surface = pygame.Surface((320, 100))
+        info_surface.set_alpha(100)
+        self.screen.blit(info_surface, (0, 0))
+        v_offset = 4
+        for msg in string_list:
+            surface = self._font_mono.render(msg, True, (255, 255, 255))
+            self.screen.blit(surface, (8, v_offset))
+            v_offset += 18
+
 
 class RoarCompetitionAgentWrapper(RoarPyActor):
     def __init__(self, wrapped : RoarPyActor):
